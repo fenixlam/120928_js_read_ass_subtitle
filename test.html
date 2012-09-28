@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<meta charset="utf-8">
+<style type="text/css">
+</style>
+<body>
+<script src="jquery.js"></script>
+<script src="converter.js"></script>
+<script>
+
+function LV2_readLine(data){
+	var result=new Array();
+	result=data.split('\n');
+	return result;
+}
+function LV2_readStyle(raw){
+	var StyleField=new Array("format", "style");
+	var tmpsubtitleStyles=LV3_readMultipleFieldParser(raw, StyleField);
+	var subtitleStyles=new Array();
+	//alert(tmpsubtitleStyles['format'][0]);
+	//alert(tmpsubtitleStyles['style'][0]);	
+	subtitleStyles['format']=tmpsubtitleStyles['format'][0];
+	subtitleStyles['style']=tmpsubtitleStyles['style'];
+	return subtitleStyles;
+}
+function LV2_readEvents(raw){
+	var EventsField=new Array("format", "comment", "dialogue");
+	var tmpsubtitleEvents=LV3_readMultipleFieldParser(raw, EventsField);
+	var subtitleEvents=new Array();
+	//alert(tmpsubtitleStyles['format'][0]);
+	//alert(tmpsubtitleStyles['style'][0]);	
+	subtitleEvents['format']=tmpsubtitleEvents['format'][1];
+	subtitleEvents['comment']=tmpsubtitleEvents['comment'];
+	subtitleEvents['dialogue']=tmpsubtitleEvents['dialogue'];
+	
+	return subtitleEvents;
+}
+function LV3_readMultipleFieldParser(raw, field){
+	var result=new Array();
+	for(i=0;i<field.length;i++){
+		result[field[i]]=LV3_readMultipleVars(raw, field[i]);
+	}
+	return result;
+}
+function LV3_readMultipleVars(raw, field){
+	var result=new Array();
+	for(i2=0;i2<raw.length;i2++){
+		var tmp=raw[i2].split(': ');
+		if(tmp[0].toLowerCase()==field){
+			result.push(tmp[1]);
+		}
+	}
+	return result;
+}
+function LV3_isArray(obj) {
+//returns true is it is an array
+	if (obj.constructor.toString().indexOf("Array") == -1)
+		return false;
+	else
+		return true;
+}
+function LV3_varDump(obj) {
+    var out = '';
+    for (var i in obj) {
+		if(LV3_isArray(obj[i])){
+			out+=LV3_varDump(obj[i]);
+		}else{
+			out += i + ": " + obj[i] + "<br/>";
+		}
+    }
+	return out;
+}
+function LV2_InfoParser(raw, field){
+	var result=new Array();
+	//init
+	for(i2=0;i2<field.length;i2++){
+		result[field[i2]]="";
+	}
+	//write vars in array
+	for(i=0;i<raw.length;i++){
+		for(i2=0;i2<field.length;i2++){
+			result[field[i2]]+=LV3_readVars(raw[i], field[i2]);
+			//alert(field[i2]+":"+result[field[i2]]);
+		}		
+	}
+	return result;
+}
+function LV3_readVars(raw, name){
+	var result="";
+	var tmp=raw.split(':');
+	
+	//alert(tmp[0].toLowerCase()+":"+name);
+	if(tmp[0].toLowerCase()==name){
+		result+=tmp[1];
+	}
+	
+	if(result=='undefined') result="";
+	return trim(result);
+	
+}
+function LV3_qouteItem(item){
+	var result=new Array();
+	result=item.split(",");
+	for(qouteItemi=0;qouteItemi<result.length;qouteItemi++){
+		result[qouteItemi]=trim(result[qouteItemi]);
+	}
+	return result;
+}
+function trim(str) {
+        return str.replace(/^\s+|\s+$/g,"");
+}
+function LV2_implementStyle(subtitleStyles){
+	var result="";
+	//alert("test 102 "+subtitleStyles['format'].length);
+	for(i=0;i<subtitleStyles['style'].length;i++){
+		var tmpstyle=LV3_qouteItem(subtitleStyles['style'][i]);
+		var tmpformat=LV3_qouteItem(subtitleStyles['format']);
+		//alert("test 112 "+tmpformat.length);
+		for(i2=0;i2<tmpformat.length;i2++){
+			//alert("test 114 "+tmpformat[i2]);
+			if(tmpformat[i2]=='Name'){
+				result+="."+tmpstyle[i2]+"{ \n";
+			}
+			if(tmpformat[i2]=='Fontname'){
+				result+="font-family: '"+tmpstyle[i2]+"'; \n";
+			}
+			if(tmpformat[i2]=='Fontsize'){
+				result+="font-size: "+tmpstyle[i2]+"px; \n";
+			}
+			if(tmpformat[i2]=='PrimaryColour'){
+				result+="color: #"+tmpstyle[i2].substr(4,6)+"; \n";
+			}
+		}
+		result+="} \n";
+	}
+	$("style").append(result);
+}
+//=====class dialogue:==========
+function LV3_TransformSubtitleEventsTimeToSeconds(theTime){
+	var tmp=theTime.split(":");
+	for(i=0;i<tmp.length;i++){
+		tmp[i]=parseFloat(tmp[i]);
+	}
+	return parseFloat(tmp[0]*3600+tmp[1]*60+tmp[2]+addTime);
+}
+function LV3_getSubtitleEventsDialogue(dialogue){
+	var result=new Array();
+	var tmp=dialogue.split(",");
+	result['layer']=tmp[0];
+	result['starttime']=LV3_TransformSubtitleEventsTimeToSeconds(tmp[1]);
+	result['endtime']=LV3_TransformSubtitleEventsTimeToSeconds(tmp[2]);
+	result['style']=tmp[3];
+	result['dialogue']=tmp[9];
+	return result;
+}
+//======end of class dialogue========
+//===========class player=========
+function LV3_TransformPlayerTimeToSeconds(theTime){
+	//alert("test 155 "+theTime);
+	if(theTime!=0){
+		//var tmp=theTime.toString().split(".");
+		//return parseFloat(tmp[0]+"."+tmp[1].substr(0, 2));
+		return Math.floor(theTime/0.01)/100;
+	}else{
+		return 0;
+	}
+}
+var dialogue=new Array();
+function LV2_loadSubtitleLooper(subtitleInfo, subtitleStyles, subtitleEvents){
+	
+	//set css class by using subtitleStyles
+	var result="";
+	video=document.getElementById("videoplayer");
+	$("#message").html(":"+video.paused);
+	if( (video.currentTime!=0)&&(video.paused==false) ){
+		for(subtitleLooperInt=0;subtitleLooperInt<subtitleEvents['dialogue'].length;subtitleLooperInt++){
+			var dialogue=LV3_getSubtitleEventsDialogue(subtitleEvents['dialogue'][subtitleLooperInt]);
+			$("#timer").html(LV3_TransformPlayerTimeToSeconds(video.currentTime)+"=="+dialogue['starttime']);
+			//alert("test 142 "+LV3_TransformPlayerTimeToSeconds(video.currentTime)+"=="+);
+			if( (LV3_TransformPlayerTimeToSeconds(video.currentTime)>=dialogue['starttime'])&&(LV3_TransformPlayerTimeToSeconds(video.currentTime)<dialogue['endtime']) ){
+				result+="<div id='layer"+dialogue['layer']+"_"+subtitleLooperInt+"' class='"+dialogue['style']+"' style='text-align:center;'>";
+				result+=dialogue['dialogue'];
+				result+="</div>";
+				$("#subtitle").html(result);
+			}
+			if(LV3_TransformPlayerTimeToSeconds(video.currentTime)>=dialogue['endtime']){
+				//$("#subtitle").html("");
+				
+				$("#layer"+dialogue['layer']+"_"+subtitleLooperInt).remove();
+			}
+		}
+	}
+	setTimeout(runner, 10);
+}
+function runner(){
+	LV2_loadSubtitleLooper(subtitleInfo, subtitleStyles, subtitleEvents);
+}
+function LV1_initVideo(subtitleInfo, subtitleStyles, subtitleEvents){
+	//init subtitle location in #subtitle 
+	//alert(trim(subtitleInfo['playresx'])+":"+trim(subtitleInfo['playresy']));
+	$("#videoplayer, #videoarea").css("width", subtitleInfo['playresx']+"px");
+	$("#videoplayer, #videoarea").css("height", subtitleInfo['playresy']+"px");
+	//implement the style
+	LV2_implementStyle(subtitleStyles);
+	
+	
+}
+var subtitleInfo;
+var subtitleStyles;
+var subtitleEvents;
+var addTime;
+function LV1_loadASS(filename, atime){
+	$.get(filename, function(data){
+		//var utf8 = (GB2312UTF8.GB2312ToUTF8(data));
+		//utf8=decodeURI("%25");
+		//$("#result").html(utf8);
+		
+		//var readlined=LV2_readLine(data)
+		var raw=LV2_readLine(data);
+		//$("#result").html(raw);
+		addTime=atime;
+		//still not implement ["PlayDepth", "timer", "title",  "scripttype", "collisions", "Original Script", "Script Updated By", "Video Zoom", "Video Aspect Ratio", "Video Position"]
+		var InfoField=[ "playresx", "playresy"];
+		subtitleInfo=LV2_InfoParser(raw, InfoField);
+		//$("#result").append(LV3_varDump(subtitleInfo)+"<br/>");
+		
+		subtitleStyles=LV2_readStyle(raw);
+		//$("#result").append(subtitleStyles['format']+"<br/>");
+		//$("#result").append(LV3_varDump(subtitleStyles['style'])+"<br/>");
+		
+		subtitleEvents=LV2_readEvents(raw);
+		//$("#result").append(LV3_varDump(subtitleEvents['dialogue'])+"<br/>");
+
+		LV1_initVideo(subtitleInfo, subtitleStyles, subtitleEvents);
+	
+		//var subtitleEvents(data);
+		LV2_loadSubtitleLooper(subtitleInfo, subtitleStyles, subtitleEvents);
+	});
+}
+$(document).ready(function(){
+	//the control code:
+	//second parameter is second delay, variable -4 make subtitle early 4 seconds to display.
+	LV1_loadASS("subtitle_utf8.ass", -4);
+});
+function report(){
+	video=document.getElementById("videoplayer");
+	//alert(":"+video.currentTime);
+}
+
+</script>
+<div id="result"></div>
+<div id="videoarea" style="position: relative; ">
+	<!--you can put some video in the folder, and also the ass file.-->
+	<!--
+		this test subtitle is the Gensou_Mangekyou_Vol.1, create by ACE Fansub, the video can be download in youtube or use this link:
+		https://docs.google.com/open?id=0B4pkTCYnYmmAcGxFallYRGlRNTg
+		thanks for video creater and the subtitle supporter.
+	-->
+	<video id="videoplayer" controls="controls" style="width: 800px; height: 600px; position:relative; left: 0px; top: 0px; z-index: 1;">
+	  <source src="video.mp4" type="video/mp4" />
+	</video>
+		<div id="subtitle" style="position: absolute; left: 0%; top: 90%; width: 100%; background-color: rgba(0,0,0,0.4); z-index:3;">
+		subtitle will display here.
+		</div>
+</div>
+<input type="button" id="report" onclick="report()" value="report" />
+<div id="timer"></div>
+<div id="message"></div>
+</body>
+</html>
